@@ -1,0 +1,65 @@
+import cv2
+import face_recognition
+import numpy as np
+import pandas as pd
+from datetime import datetime
+
+# Load known images
+person1 = face_recognition.load_image_file("person1.jpg")
+person1_encoding = face_recognition.face_encodings(person1)[0]
+
+person2 = face_recognition.load_image_file("person2.jpg")
+person2_encoding = face_recognition.face_encodings(person2)[0]
+
+known_encodings = [person1_encoding, person2_encoding]
+known_names = ["Person 1", "Person 2"]
+
+# Attendance file
+attendance_file = "attendance.csv"
+
+try:
+    attendance = pd.read_csv(attendance_file)
+except:
+    attendance = pd.DataFrame(columns=["Name", "Time"])
+
+# Start webcam
+video_capture = cv2.VideoCapture(0)
+
+print("System Started... Press Q to Exit")
+
+while True:
+    ret, frame = video_capture.read()
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    faces = face_recognition.face_locations(rgb_frame)
+    encodings = face_recognition.face_encodings(rgb_frame, faces)
+
+    for face_encoding, face_location in zip(encodings, faces):
+        matches = face_recognition.compare_faces(known_encodings, face_encoding)
+        name = "Unknown"
+
+        face_distances = face_recognition.face_distance(known_encodings, face_encoding)
+        best_match_index = np.argmin(face_distances)
+
+        if matches[best_match_index]:
+            name = known_names[best_match_index]
+
+            # Mark attendance
+            if name not in attendance["Name"].values:
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                new_entry = pd.DataFrame([[name, now]], columns=["Name", "Time"])
+                attendance = pd.concat([attendance, new_entry], ignore_index=True)
+                attendance.to_csv(attendance_file, index=False)
+
+        top, right, bottom, left = face_location
+        cv2.rectangle(frame, (left, top), (right, bottom), (0,255,0), 2)
+        cv2.putText(frame, name, (left, top-10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,255,0), 2)
+
+    cv2.imshow("AI Face Recognition System", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+video_capture.release()
+cv2.destroyAllWindows()
